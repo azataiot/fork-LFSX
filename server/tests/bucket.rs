@@ -1266,6 +1266,28 @@ async fn a_pre_signed_upload_is_verified_with_the_credentials_it_was_negotiated_
     );
 }
 
+#[tokio::test]
+async fn a_pre_signed_verify_outlives_a_slow_upload() {
+    let bucket = bucket_or_skip!();
+    let root = tempfile::tempdir().unwrap();
+    let payload = payload("an upload slower than any lifetime");
+    let oid = oid_of(&payload);
+    let repo = repository("Slow");
+
+    let answer = negotiate_upload(app(&root, &bucket, true), &repo, &oid, payload.len()).await;
+
+    assert_eq!(
+        answer["objects"][0]["authenticated"],
+        serde_json::json!(true)
+    );
+    let verify = &answer["objects"][0]["actions"]["verify"];
+    assert!(
+        verify["expires_in"].is_null() && verify["expires_at"].is_null(),
+        "git-lfs asks for the verify only after the upload, and an expired one uploads again: \
+         {answer}"
+    );
+}
+
 // The reason the digest is bound into the signature rather than trusted. Without
 // it a client holding an upload URL could put anything under a key the server
 // will later adopt as the object it is named after.

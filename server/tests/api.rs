@@ -256,6 +256,33 @@ async fn an_object_already_stored_is_not_asked_for_again() {
     assert!(body["objects"][0]["error"].is_null());
 }
 
+// git-lfs asks for the verify action only once the upload has finished, and
+// an expired one sends it back to the batch for a fresh upload. With an expiry
+// on verify, an upload slower than the lifetime starts over, forever.
+#[tokio::test]
+async fn a_verify_action_never_expires() {
+    let root = tempfile::tempdir().unwrap();
+    let payload = b"a slow upload".to_vec();
+    let oid = oid_of(&payload);
+
+    let (_, body) = batch(
+        app(&root),
+        serde_json::json!({
+            "operation": "upload",
+            "transfers": ["basic"],
+            "objects": [{ "oid": oid, "size": payload.len() }]
+        }),
+    )
+    .await;
+
+    let verify = &body["objects"][0]["actions"]["verify"];
+    assert!(verify["href"].is_string(), "no verify action: {body}");
+    assert!(
+        verify["expires_in"].is_null() && verify["expires_at"].is_null(),
+        "an upload that outlasts the expiry is sent again from the start: {body}"
+    );
+}
+
 #[tokio::test]
 async fn batch_never_claims_a_transfer_through_this_server_is_pre_authenticated() {
     let root = tempfile::tempdir().unwrap();
