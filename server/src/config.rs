@@ -320,6 +320,16 @@ impl Config {
             expires_in: self.action_lifetime,
         }
     }
+
+    pub fn authorized_action(&self, href: String, authorization: Option<&str>) -> Action {
+        match authorization {
+            Some(credentials) => self.signed_action(
+                href,
+                vec![("Authorization".to_owned(), credentials.to_owned())],
+            ),
+            None => self.action(href),
+        }
+    }
 }
 
 // Opt in, not opt out. Serving objects to a caller with no credentials at all is

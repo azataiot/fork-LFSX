@@ -54,6 +54,9 @@ pub(super) async fn batch(
     }
 
     let base = state.config.base_url(&headers);
+    let authorization = headers
+        .get(header::AUTHORIZATION)
+        .and_then(|value| value.to_str().ok());
 
     // Read once for the whole batch rather than once per object. Nothing is
     // written until the client uploads, so the figure cannot change during the
@@ -80,7 +83,9 @@ pub(super) async fn batch(
             async move {
                 match request.operation {
                     Operation::Download => resolve_download(state, base, ns, id).await,
-                    Operation::Upload => resolve_upload(state, base, ns, id, budget).await,
+                    Operation::Upload => {
+                        resolve_upload(state, base, ns, id, budget, authorization).await
+                    }
                 }
             }
         })
@@ -151,6 +156,7 @@ async fn resolve_upload(
     ns: &Namespace,
     id: ObjectId,
     budget: Option<Budget>,
+    authorization: Option<&str>,
 ) -> ObjectSpec {
     // The size is declared before a single byte moves, so an object over the
     // ceiling is refused here rather than after the client has spent an hour
@@ -203,8 +209,11 @@ async fn resolve_upload(
                 upload: Some(state.config.signed_action(signed.href, signed.headers)),
                 // The client must come back: nothing measured these bytes, so the
                 // size, the ceiling and the budget are checked here, and only
-                // then does the object become this repository's.
-                verify: Some(state.config.action(verify)),
+                // then does the object become this repository's. `authenticated`
+                // covers this action too, so the client sends only the headers
+                // named on it, and without the batch's credentials the verify
+                // is refused.
+                verify: Some(state.config.authorized_action(verify, authorization)),
                 ..Actions::default()
             }),
             error: None,
