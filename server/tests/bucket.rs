@@ -1119,17 +1119,29 @@ async fn a_range_over_a_framed_object_in_a_bucket_lands() {
 // The whole flow: negotiate, PUT straight to the bucket with the headers the
 // server signed, then report back so the object becomes this repository's.
 async fn negotiate_upload(app: Router, repo: &str, oid: &str, size: usize) -> serde_json::Value {
+    negotiate_upload_as(app, repo, oid, size, None).await
+}
+
+async fn negotiate_upload_as(
+    app: Router,
+    repo: &str,
+    oid: &str,
+    size: usize,
+    authorization: Option<&str>,
+) -> serde_json::Value {
     let body = serde_json::json!({
         "operation": "upload",
         "transfers": ["basic"],
         "objects": [{ "oid": oid, "size": size }]
     });
-    let request = Request::builder()
+    let mut request = Request::builder()
         .method("POST")
         .uri(format!("/FerrLabs/{repo}/objects/batch"))
-        .header("content-type", "application/vnd.git-lfs+json")
-        .body(Body::from(body.to_string()))
-        .unwrap();
+        .header("content-type", "application/vnd.git-lfs+json");
+    if let Some(authorization) = authorization {
+        request = request.header(axum::http::header::AUTHORIZATION, authorization);
+    }
+    let request = request.body(Body::from(body.to_string())).unwrap();
 
     let response = app.oneshot(request).await.unwrap();
     serde_json::from_slice(
@@ -1218,6 +1230,39 @@ async fn a_client_uploads_straight_to_the_bucket_and_then_owns_the_object() {
                 .unwrap()
         ),
         oid
+    );
+}
+
+// `authenticated: true` tells the client that every action on the object carries
+// its own credentials, so git-lfs sends the verify with nothing but the headers
+// the action names. Behind any auth provider, a verify with no credentials is a
+// 401, and every pre-signed push fails after its bytes have already arrived.
+#[tokio::test]
+async fn a_pre_signed_upload_is_verified_with_the_credentials_it_was_negotiated_with() {
+    let bucket = bucket_or_skip!();
+    let root = tempfile::tempdir().unwrap();
+    let payload = payload("an upload that has to be reported");
+    let oid = oid_of(&payload);
+    let repo = repository("Reported");
+    let credentials = "Basic dXNlcjp0b2tlbg==";
+
+    let answer = negotiate_upload_as(
+        app(&root, &bucket, true),
+        &repo,
+        &oid,
+        payload.len(),
+        Some(credentials),
+    )
+    .await;
+
+    assert_eq!(
+        answer["objects"][0]["authenticated"],
+        serde_json::json!(true)
+    );
+    assert_eq!(
+        answer["objects"][0]["actions"]["verify"]["header"]["Authorization"],
+        serde_json::json!(credentials),
+        "the client sends the verify bare unless the action names the credentials: {answer}"
     );
 }
 
