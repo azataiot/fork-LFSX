@@ -309,7 +309,7 @@ impl Config {
         Action {
             href,
             header: None,
-            expires_in: self.action_lifetime,
+            expires_in: Some(self.action_lifetime),
         }
     }
 
@@ -317,17 +317,22 @@ impl Config {
         Action {
             href,
             header: Some(headers.into_iter().collect()),
-            expires_in: self.action_lifetime,
+            expires_in: Some(self.action_lifetime),
         }
     }
 
-    pub fn authorized_action(&self, href: String, authorization: Option<&str>) -> Action {
-        match authorization {
-            Some(credentials) => self.signed_action(
-                href,
-                vec![("Authorization".to_owned(), credentials.to_owned())],
-            ),
-            None => self.action(href),
+    // No expiry. git-lfs reads the verify action only once the upload has
+    // finished, and an expired one sends the whole object again, so any upload
+    // slower than a lifetime would never complete.
+    pub fn verify_action(&self, href: String, authorization: Option<&str>) -> Action {
+        Action {
+            href,
+            header: authorization.map(|credentials| {
+                [("Authorization".to_owned(), credentials.to_owned())]
+                    .into_iter()
+                    .collect()
+            }),
+            expires_in: None,
         }
     }
 }

@@ -84,7 +84,8 @@ pub struct Action {
     // missing header is a refused request rather than a weaker one.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub header: Option<std::collections::BTreeMap<String, String>>,
-    pub expires_in: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub expires_in: Option<u32>,
 }
 
 #[derive(Debug, Serialize)]

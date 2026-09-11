@@ -213,7 +213,7 @@ async fn resolve_upload(
                 // covers this action too, so the client sends only the headers
                 // named on it, and without the batch's credentials the verify
                 // is refused.
-                verify: Some(state.config.authorized_action(verify, authorization)),
+                verify: Some(state.config.verify_action(verify, authorization)),
                 ..Actions::default()
             }),
             error: None,
@@ -226,7 +226,7 @@ async fn resolve_upload(
         authenticated: None,
         actions: Some(Actions {
             upload: Some(state.config.action(upload)),
-            verify: Some(state.config.action(verify)),
+            verify: Some(state.config.verify_action(verify, None)),
             ..Actions::default()
         }),
         error: None,
